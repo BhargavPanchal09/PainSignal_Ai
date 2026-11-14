@@ -12,3 +12,16 @@ Similar reports do not necessarily share the same root cause.
 ## Status
 
 Early development: project setup.
+## Dependency audit
+
+Checked on November 14, 2026:
+
+- `npm audit` reported seven moderate findings tracing to
+  minimatch in the development linting dependency chain.
+- `npm audit --omit=dev` reported zero vulnerabilities.
+- The latest checked TypeScript ESLint release still required
+  minimatch 10.x. No dependency override was applied.
+- Recheck this advisory when updating dependencies:
+  https://github.com/advisories/GHSA-g3hv-75wg-m249
+
+Audit results do not guarantee that the application is secure.
