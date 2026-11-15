@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button";
+import { RepositoryForm } from "@/components/repository-form";
 
 export default function Home() {
   return (
@@ -18,9 +18,7 @@ export default function Home() {
         <p className="mt-6 text-sm text-gray-600">
           Related reports do not necessarily share the same root cause.
         </p>
-        <Button className="mt-8">
-          Analyze repository
-        </Button>
+        <RepositoryForm />
       </div>
     </main>
   );

@@ -16,23 +16,27 @@ export const repositoryUrlSchema = repositoryUrlTextSchema
   )
   .refine(
     (value) => {
-      const url = new URL(value);
+      try {
+        const url = new URL(value);
 
-      const hasRepositoryPath =
-        /^\/[a-zA-Z0-9-]+\/[a-zA-Z0-9_.-]+\/?$/.test(url.pathname);
+        const hasRepositoryPath =
+          /^\/[a-zA-Z0-9-]+\/[a-zA-Z0-9_.-]+\/?$/.test(url.pathname);
 
-      const repositoryName = url.pathname.split("/")[2];
+        const repositoryName = url.pathname.split("/")[2];
 
-      return (
-        hasRepositoryPath &&
-        repositoryName !== "." &&
-        repositoryName !== ".." &&
-        url.username === "" &&
-        url.password === "" &&
-        url.port === "" &&
-        url.search === "" &&
-        url.hash === ""
-      );
+        return (
+          hasRepositoryPath &&
+          repositoryName !== "." &&
+          repositoryName !== ".." &&
+          url.username === "" &&
+          url.password === "" &&
+          url.port === "" &&
+          url.search === "" &&
+          url.hash === ""
+        );
+      } catch {
+        return false;
+      }
     },
     {
       error:
