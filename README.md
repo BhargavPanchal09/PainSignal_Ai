@@ -25,3 +25,13 @@ Checked on November 14, 2026:
   https://github.com/advisories/GHSA-g3hv-75wg-m249
 
 Audit results do not guarantee that the application is secure.
+
+### Follow-up — November 15, 2026
+
+- After shadcn setup and Zod installation, npm audit reported
+  12 findings: 2 low and 10 moderate.
+- The report included deepmerge and minimatch in tooling dependencies.
+- shadcn was moved to devDependencies without changing its version.
+  This classification change does not fix the advisories.
+- No forced downgrade or dependency override was applied.
+- Lint and the production build passed after the change.
