@@ -1,31 +1,89 @@
 "use client";
-
+import { z } from "zod";
 import { useState } from "react";
 import type { FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { repositoryReferenceSchema } from "@/lib/github/repository-url";
 
+const sampleResponseSchema = z.object({
+  sample: z.object({
+    entriesFetched: z.number().int().nonnegative(),
+    issuesReturned: z.number().int().nonnegative(),
+  }),
+});
+
+const errorResponseSchema = z.object({
+  error: z.string(),
+});
+
 export function RepositoryForm() {
+  const [isLoading, setIsLoading] = useState(false);
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [message, setMessage] = useState("");
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  event.preventDefault();
 
-    const result = repositoryReferenceSchema.safeParse(repositoryUrl);
+  if (isLoading) {
+    return;
+  }
 
-    if (!result.success) {
+  const result = repositoryReferenceSchema.safeParse(repositoryUrl);
+
+  if (!result.success) {
+    setMessage(
+      result.error.issues[0]?.message ?? "Enter a valid repository URL.",
+    );
+    return;
+  }
+
+  setIsLoading(true);
+  setMessage("Fetching issues…");
+
+  try {
+    const response = await fetch("/api/github/issues", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ repositoryUrl }),
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    const data: unknown = await response.json();
+
+    if (!response.ok) {
+      const errorResult = errorResponseSchema.safeParse(data);
+
       setMessage(
-        result.error.issues[0]?.message ?? "Enter a valid repository URL.",
+        errorResult.success
+          ? errorResult.data.error
+          : "The server could not complete the request.",
       );
       return;
     }
 
+    const sampleResult = sampleResponseSchema.safeParse(data);
+
+    if (!sampleResult.success) {
+      setMessage("The server returned an unexpected response.");
+      return;
+    }
+
+    const { entriesFetched, issuesReturned } = sampleResult.data.sample;
+
     setMessage(
-      `URL format accepted. Owner: ${result.data.owner}. Repository: ${result.data.repository}. GitHub has not been contacted yet.`,
+      `Found ${issuesReturned} issues among ${entriesFetched} entries in the first batch. This is not the full repository history.`,
     );
+  } catch {
+    setMessage(
+      "Could not complete the request. Check your connection and try again.",
+    );
+  } finally {
+    setIsLoading(false);
   }
+}
 
   return (
     <form onSubmit={handleSubmit} className="mt-8 space-y-3">
@@ -34,6 +92,7 @@ export function RepositoryForm() {
       </label>
 
       <input
+        disabled={isLoading}
         id="repository-url"
         name="repositoryUrl"
         type="text"
@@ -53,7 +112,9 @@ export function RepositoryForm() {
         Use a repository homepage, not an issue or pull request link.
       </p>
 
-      <Button type="submit">Analyze repository</Button>
+      <Button type="submit" disabled={isLoading}>
+        {isLoading ? "Fetching issues…" : "Analyze repository"}
+      </Button>
 
       <p
         id="repository-message"
