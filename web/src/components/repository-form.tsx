@@ -6,12 +6,27 @@ import type { FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { repositoryReferenceSchema } from "@/lib/github/repository-url";
 
+const issueSchema = z.object({
+  id: z.number().int(),
+  number: z.number().int(),
+  title: z.string(),
+  state: z.enum(["open", "closed"]),
+  html_url: z.url({
+    protocol: /^https$/,
+    hostname: /^github\.com$/,
+  }),
+});
+
+type Issue = z.infer<typeof issueSchema>;
+
 const sampleResponseSchema = z.object({
+  issues: z.array(issueSchema),
   sample: z.object({
     entriesFetched: z.number().int().nonnegative(),
     issuesReturned: z.number().int().nonnegative(),
   }),
 });
+
 
 const errorResponseSchema = z.object({
   error: z.string(),
@@ -21,6 +36,7 @@ export function RepositoryForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [message, setMessage] = useState("");
+  const [issues, setIssues] = useState<Issue[] | null>(null);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
   event.preventDefault();
@@ -28,6 +44,7 @@ export function RepositoryForm() {
   if (isLoading) {
     return;
   }
+  setIssues(null);
 
   const result = repositoryReferenceSchema.safeParse(repositoryUrl);
 
@@ -72,6 +89,7 @@ export function RepositoryForm() {
     }
 
     const { entriesFetched, issuesReturned } = sampleResult.data.sample;
+    setIssues(sampleResult.data.issues);
 
     setMessage(
       `Found ${issuesReturned} issues among ${entriesFetched} entries in the first batch. This is not the full repository history.`,
@@ -100,6 +118,7 @@ export function RepositoryForm() {
         onChange={(event) => {
           setRepositoryUrl(event.target.value);
           setMessage("");
+          setIssues(null);
         }}
         placeholder="https://github.com/owner/repository"
         autoCapitalize="none"
@@ -123,6 +142,48 @@ export function RepositoryForm() {
       >
         {message}
       </p>
-    </form>
+    {issues !== null && (
+  <section aria-labelledby="issues-heading" className="pt-6">
+    <h2 id="issues-heading" className="text-xl font-semibold">
+      Issues in this sample
+    </h2>
+
+    {issues.length === 0 ? (
+      <p className="mt-3 text-sm text-gray-600">
+        No issues were found in this batch. Other batches may contain issues.
+      </p>
+    ) : (
+      <ul className="mt-4 space-y-4">
+        {issues.map((issue) => (
+          <li
+            key={issue.id}
+            className="rounded-lg border border-border p-4"
+          >
+            <p className="text-sm text-gray-600">
+              #{issue.number} · {issue.state}
+            </p>
+
+            <h3 className="mt-2 break-words font-semibold">
+              {issue.title}
+            </h3>
+
+            <a
+              href={issue.html_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 inline-block rounded-sm underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              View on GitHub ↗
+              <span className="sr-only">
+                {" "}issue #{issue.number}, opens in a new tab
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    )}
+  </section>
+)}
+ </form>
   );
 }
