@@ -22,6 +22,7 @@ type Issue = z.infer<typeof issueSchema>;
 const sampleResponseSchema = z.object({
   issues: z.array(issueSchema),
   sample: z.object({
+    pagesFetched: z.number().int().nonnegative(),
     entriesFetched: z.number().int().nonnegative(),
     issuesReturned: z.number().int().nonnegative(),
   }),
@@ -88,11 +89,13 @@ export function RepositoryForm() {
       return;
     }
 
-    const { entriesFetched, issuesReturned } = sampleResult.data.sample;
+    const { pagesFetched, entriesFetched, issuesReturned } =
+      sampleResult.data.sample;
+
     setIssues(sampleResult.data.issues);
 
     setMessage(
-      `Found ${issuesReturned} issues among ${entriesFetched} entries in the first batch. This is not the full repository history.`,
+      `Returned ${issuesReturned} issues after checking ${entriesFetched} entries across ${pagesFetched} batches. Limits: 20 issues or 3 batches. Additional issues may be omitted.`,
     );
   } catch {
     setMessage(
@@ -101,7 +104,7 @@ export function RepositoryForm() {
   } finally {
     setIsLoading(false);
   }
-}
+} 
 
   return (
     <form onSubmit={handleSubmit} className="mt-8 space-y-3">
@@ -149,7 +152,7 @@ export function RepositoryForm() {
     </h2>
 
     {issues.length === 0 ? (
-      <p className="mt-3 text-sm text-gray-600">
+      <p className="No issues were found in the checked batches. Additional batches may contain issues.">
         No issues were found in this batch. Other batches may contain issues.
       </p>
     ) : (

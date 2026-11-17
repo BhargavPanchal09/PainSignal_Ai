@@ -6,6 +6,23 @@ const requestSchema = z.object({
   repositoryUrl: repositoryReferenceSchema,
 });
 
+const githubEntrySchema = z.object({
+  id: z.number().int(),
+  number: z.number().int(),
+  title: z.string(),
+  body: z.string().nullable(),
+  state: z.enum(["open", "closed"]),
+  html_url: z.url({
+    protocol: /^https$/,
+    hostname: /^github\.com$/,
+  }),
+  pull_request: z.object({}).optional(),
+});
+
+const ENTRIES_PER_PAGE = 30;
+const MAX_PAGES = 3;
+const MAX_ISSUES = 20;
+
 export async function POST(request: Request) {
   let body: unknown;
 
@@ -19,18 +36,6 @@ export async function POST(request: Request) {
   }
 
   const result = requestSchema.safeParse(body);
-  const githubEntrySchema = z.object({
-  id: z.number().int(),
-  number: z.number().int(),
-  title: z.string(),
-  body: z.string().nullable(),
-  state: z.enum(["open", "closed"]),
-  html_url: z.url({
-    protocol: /^https$/,
-    hostname: /^github\.com$/,
-  }),
-  pull_request: z.object({}).optional(),
-});
 
   if (!result.success) {
     return Response.json(
@@ -50,77 +55,121 @@ export async function POST(request: Request) {
   );
 
   githubUrl.searchParams.set("state", "all");
-  githubUrl.searchParams.set("per_page", "30");
-  githubUrl.searchParams.set("page", "1");
+  githubUrl.searchParams.set("per_page", String(ENTRIES_PER_PAGE));
+  githubUrl.searchParams.set("sort", "created");
+  githubUrl.searchParams.set("direction", "desc");
+
+  const collectedIssues: z.infer<typeof githubEntrySchema>[] = [];
+  const seenIds = new Set<number>();
+
+  let pagesFetched = 0;
+  let entriesFetched = 0;
+
+  // One shared time limit for all GitHub requests in this operation.
+  const signal = AbortSignal.timeout(10_000);
 
   try {
-    const response = await fetch(githubUrl, {
-      headers: {
-        Accept: "application/vnd.github+json",
-      },
-      cache: "no-store",
-      signal: AbortSignal.timeout(10_000),
-      redirect: "error",
-    });
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      githubUrl.searchParams.set("page", String(page));
 
-    if (!response.ok) {
-      if (response.status === 404) {
+      const response = await fetch(githubUrl, {
+        headers: {
+          Accept: "application/vnd.github+json",
+        },
+        cache: "no-store",
+        signal,
+        redirect: "error",
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          return Response.json(
+            { error: "Repository not found or unavailable to this application." },
+            { status: 404 },
+          );
+        }
+
+        if (response.status === 403 || response.status === 429) {
+          return Response.json(
+            {
+              error:
+                "GitHub refused this request. An API limit or access restriction may apply. Try again later.",
+            },
+            { status: 503 },
+          );
+        }
+
         return Response.json(
-          { error: "Repository not found or unavailable to this application." },
-          { status: 404 },
+          { error: "GitHub could not complete the request. Try again later." },
+          { status: 502 },
         );
       }
 
-      if (response.status === 403 || response.status === 429) {
+      const data: unknown = await response.json();
+      const parsed = z.array(githubEntrySchema).safeParse(data);
+
+      if (!parsed.success) {
         return Response.json(
-          {
-            error:
-              "GitHub refused this request. An API limit or access restriction may apply. Try again later.",
-          },
-          { status: 503 },
+          { error: "GitHub returned data in an unexpected format." },
+          { status: 502 },
         );
       }
 
-      return Response.json(
-        { error: "GitHub could not complete the request. Try again later." },
-        { status: 502 },
-      );
+      pagesFetched++;
+      entriesFetched += parsed.data.length;
+
+      for (const entry of parsed.data) {
+        if (entry.pull_request !== undefined || seenIds.has(entry.id)) {
+          continue;
+        }
+
+        seenIds.add(entry.id);
+        collectedIssues.push(entry);
+
+        if (collectedIssues.length >= MAX_ISSUES) {
+          break;
+        }
+      }
+
+      if (collectedIssues.length >= MAX_ISSUES) {
+        break;
+      }
+
+      const linkHeader = response.headers.get("link") ?? "";
+      const hasNextPage = linkHeader.includes('rel="next"');
+
+      if (!hasNextPage) {
+        break;
+      }
     }
 
-    const data: unknown = await response.json();
-    const parsed = z.array(githubEntrySchema).safeParse(data);
-
-    if (!parsed.success) {
-      return Response.json(
-        { error: "GitHub returned data in an unexpected format." },
-        { status: 502 },
-      );
-    }
-
-    const issues = parsed.data
-      .filter((entry) => entry.pull_request === undefined)
-      .map((entry) => ({
-        id: entry.id,
-        number: entry.number,
-        title: entry.title,
-        body: entry.body,
-        state: entry.state,
-        html_url: entry.html_url,
-      }));
+    const issues = collectedIssues.map((entry) => ({
+      id: entry.id,
+      number: entry.number,
+      title: entry.title,
+      body: entry.body,
+      state: entry.state,
+      html_url: entry.html_url,
+    }));
 
     return Response.json({
       repository: { owner, repository },
       issues,
       sample: {
-        page: 1,
-        entriesFetched: parsed.data.length,
+        pagesFetched,
+        entriesFetched,
         issuesReturned: issues.length,
-        note: "Only the first batch was checked, not the full repository history.",
+        maxPages: MAX_PAGES,
+        maxIssues: MAX_ISSUES,
+        note: "A bounded sample was checked. Older or additional issues may be omitted.",
       },
     });
   } catch {
     return Response.json(
-      { error: "Could not reach GitHub or the request timed out. Try again later." },
+      {
+        error:
+          "Could not complete the GitHub requests within the time limit. Try again later.",
+      },
       { status: 502 },
     );
   }
