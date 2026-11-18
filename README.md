@@ -35,3 +35,14 @@ Audit results do not guarantee that the application is secure.
   This classification change does not fix the advisories.
 - No forced downgrade or dependency override was applied.
 - Lint and the production build passed after the change.
+
+### Testing setup — November 18, 2026
+
+- Added Vitest and aligned @types/node with Node.js 24.
+- Three automated tests passed: GitHub refusal, simulated timeout,
+  and failure after an earlier batch succeeds.
+- Lint and the production build passed.
+- npm audit reported 22 findings: 7 moderate and 15 high.
+- npm audit --omit=dev reported zero findings.
+- Tooling advisories remain unresolved. No forced downgrade was applied.
+- Tests and builds passing do not resolve security advisories.
