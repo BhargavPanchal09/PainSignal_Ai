@@ -129,3 +129,107 @@ test("does not return partial issues when a later batch fails", async () => {
 
   expect(mockFetch).toHaveBeenCalledTimes(2);
 });
+test("stops after three batches even when another page exists", async () => {
+  // Fictional pull requests used only inside this test.
+  const pullRequests = Array.from({ length: 30 }, (_, index) => ({
+    id: index + 1,
+    number: index + 1,
+    title: "Fictional test pull request",
+    body: null,
+    state: "open",
+    html_url: `https://github.com/test-owner/test-repo/pull/${index + 1}`,
+    pull_request: {},
+  }));
+
+  const mockFetch = vi.fn().mockImplementation(() =>
+    Promise.resolve(
+      Response.json(pullRequests, {
+        headers: {
+          Link: '<https://api.github.com/repos/test-owner/test-repo/issues?page=2>; rel="next"',
+        },
+      }),
+    ),
+  );
+
+  vi.stubGlobal("fetch", mockFetch);
+
+  const request = new Request(
+    "http://localhost/api/github/issues",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        repositoryUrl: "https://github.com/test-owner/test-repo",
+      }),
+    },
+  );
+
+  const response = await POST(request);
+  const body: unknown = await response.json();
+
+  expect(response.status).toBe(200);
+
+  expect(body).toMatchObject({
+    issues: [],
+    sample: {
+      pagesFetched: 3,
+      entriesFetched: 90,
+      issuesReturned: 0,
+    },
+  });
+
+  expect(mockFetch).toHaveBeenCalledTimes(3);
+});
+test("returns at most twenty issues and stops requesting more batches", async () => {
+  // Fictional issues used only inside this test.
+  const issues = Array.from({ length: 30 }, (_, index) => ({
+    id: index + 1,
+    number: index + 1,
+    title: `Fictional test issue ${index + 1}`,
+    body: null,
+    state: "open",
+    html_url: `https://github.com/test-owner/test-repo/issues/${index + 1}`,
+  }));
+
+  const mockFetch = vi.fn().mockResolvedValue(
+    Response.json(issues, {
+      headers: {
+        Link: '<https://api.github.com/repos/test-owner/test-repo/issues?page=2>; rel="next"',
+      },
+    }),
+  );
+
+  vi.stubGlobal("fetch", mockFetch);
+
+  const request = new Request(
+    "http://localhost/api/github/issues",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        repositoryUrl: "https://github.com/test-owner/test-repo",
+      }),
+    },
+  );
+
+  const response = await POST(request);
+  const body: unknown = await response.json();
+
+  expect(response.status).toBe(200);
+
+  expect(body).toMatchObject({
+    sample: {
+      pagesFetched: 1,
+      entriesFetched: 30,
+      issuesReturned: 20,
+    },
+    issues: expect.any(Array),
+  });
+
+  expect(body).toHaveProperty("issues.length", 20);
+  expect(mockFetch).toHaveBeenCalledTimes(1);
+});
