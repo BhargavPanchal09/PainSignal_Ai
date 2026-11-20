@@ -233,3 +233,68 @@ test("returns at most twenty issues and stops requesting more batches", async ()
   expect(body).toHaveProperty("issues.length", 20);
   expect(mockFetch).toHaveBeenCalledTimes(1);
 });
+
+test("returns an issue only once when it appears in two batches", async () => {
+  // Fictional issues used only inside this test.
+  const firstIssue = {
+    id: 101,
+    number: 1,
+    title: "Fictional issue A",
+    body: null,
+    state: "open",
+    html_url: "https://github.com/test-owner/test-repo/issues/1",
+  };
+
+  const secondIssue = {
+    ...firstIssue,
+    id: 102,
+    number: 2,
+    title: "Fictional issue B",
+    html_url: "https://github.com/test-owner/test-repo/issues/2",
+  };
+
+  const mockFetch = vi
+    .fn()
+    .mockResolvedValueOnce(
+      Response.json([firstIssue], {
+        headers: {
+          Link: '<https://api.github.com/repos/test-owner/test-repo/issues?page=2>; rel="next"',
+        },
+      }),
+    )
+    .mockResolvedValueOnce(
+      Response.json([firstIssue, secondIssue]),
+    );
+
+  vi.stubGlobal("fetch", mockFetch);
+
+  const request = new Request(
+    "http://localhost/api/github/issues",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        repositoryUrl: "https://github.com/test-owner/test-repo",
+      }),
+    },
+  );
+
+  const response = await POST(request);
+  const body: unknown = await response.json();
+
+  expect(response.status).toBe(200);
+
+  expect(body).toMatchObject({
+    issues: [firstIssue, secondIssue],
+    sample: {
+      pagesFetched: 2,
+      entriesFetched: 3,
+      issuesReturned: 2,
+    },
+  });
+
+  expect(body).toHaveProperty("issues.length", 2);
+  expect(mockFetch).toHaveBeenCalledTimes(2);
+});
