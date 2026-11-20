@@ -298,3 +298,39 @@ test("returns an issue only once when it appears in two batches", async () => {
   expect(body).toHaveProperty("issues.length", 2);
   expect(mockFetch).toHaveBeenCalledTimes(2);
 });
+test("returns an empty issue list when GitHub has no entries", async () => {
+  const mockFetch = vi.fn().mockResolvedValue(
+    Response.json([]),
+  );
+
+  vi.stubGlobal("fetch", mockFetch);
+
+  const request = new Request(
+    "http://localhost/api/github/issues",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        repositoryUrl: "https://github.com/test-owner/test-repo",
+      }),
+    },
+  );
+
+  const response = await POST(request);
+  const body: unknown = await response.json();
+
+  expect(response.status).toBe(200);
+
+  expect(body).toMatchObject({
+    issues: [],
+    sample: {
+      pagesFetched: 1,
+      entriesFetched: 0,
+      issuesReturned: 0,
+    },
+  });
+
+  expect(mockFetch).toHaveBeenCalledTimes(1);
+});
