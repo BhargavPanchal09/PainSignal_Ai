@@ -1,6 +1,14 @@
 import { afterEach, expect, test, vi } from "vitest";
 
 import { POST } from "../src/app/api/github/issues/route";
+import { saveRepositoryIssues } from "@/lib/github/save-issues";
+
+vi.mock("@/lib/github/save-issues", () => ({
+  saveRepositoryIssues: vi.fn().mockResolvedValue({
+    repositoryId: "00000000-0000-4000-8000-000000000001",
+    issuesSaved: 0,
+  }),
+}));
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -333,4 +341,35 @@ test("returns an empty issue list when GitHub has no entries", async () => {
   });
 
   expect(mockFetch).toHaveBeenCalledTimes(1);
+});
+test("returns a helpful error when saving issues fails", async () => {
+  const mockFetch = vi.fn().mockResolvedValue(Response.json([]));
+
+  vi.stubGlobal("fetch", mockFetch);
+
+  vi.mocked(saveRepositoryIssues).mockRejectedValueOnce(
+    new Error("Simulated database failure"),
+  );
+
+  const request = new Request(
+    "http://localhost/api/github/issues",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        repositoryUrl: "https://github.com/test-owner/test-repo",
+      }),
+    },
+  );
+
+  const response = await POST(request);
+
+  expect(response.status).toBe(503);
+
+  expect(await response.json()).toEqual({
+    error:
+      "Issues were fetched from GitHub, but could not be saved. Try again later.",
+  });
 });

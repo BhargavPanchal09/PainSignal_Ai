@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { repositoryReferenceSchema } from "@/lib/github/repository-url";
+import { saveRepositoryIssues } from "@/lib/github/save-issues";
 
 const requestSchema = z.object({
   repositoryUrl: repositoryReferenceSchema,
@@ -151,6 +152,17 @@ export async function POST(request: Request) {
       state: entry.state,
       html_url: entry.html_url,
     }));
+    try {
+      await saveRepositoryIssues({ owner, repository }, issues);
+    } catch {
+      return Response.json(
+        {
+          error:
+            "Issues were fetched from GitHub, but could not be saved. Try again later.",
+        },
+        { status: 503 },
+      );
+    }
 
     return Response.json({
       repository: { owner, repository },
